@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        branch: [ develop ]
+        branch: [ oss-exit-gate ]
 
     steps:
       - name: Recursively Checkout Repository
