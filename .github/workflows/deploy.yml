@@ -51,7 +51,6 @@ jobs:
         continue-on-error: true
 
       - name: Dump gcloud logs if build failed
-        if: failure()
         run: |
           echo "--- Dumping gcloud logs for detailed error ---"
           # The exact path from the error: /home/runner/.config/gcloud/logs/2025.10.30/06.03.23.662269.log
