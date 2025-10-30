@@ -42,7 +42,6 @@ jobs:
 
       - name: Submit Build to GCB
         id: gcb
-        working-directory: twill
         run: |
           gcloud builds submit . \
             --config=cloudbuild.yaml \
