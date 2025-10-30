@@ -40,24 +40,28 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-${{ github.workflow }}
 
-      - name: Debug Working Directory and File Presence
-        run: |
-          echo "--- Debugging File Paths ---"
-          echo "GITHUB_WORKSPACE: ${{ github.workspace }}"
-          echo "Contents of GITHUB_WORKSPACE:"
-          ls -lA ${{ github.workspace }}
-          echo ""
-          echo "Contents of twill/ directory:"
-          ls -lA ${{ github.workspace }}/twill/
-          echo ""
-          echo "Attempting to find cloudbuild.yaml within twill/:"
-          find ${{ github.workspace }}/twill/ -name cloudbuild.yaml
-          echo "--- Debugging Complete ---"
-
       - name: Submit Build to GCB
         id: gcb
         working-directory: twill
         run: |
           gcloud builds submit . \
             --config=cloudbuild.yaml \
-            --project='cdapio-github-builds' \
+            --project='cdapio-github-builds'
+        # Continue on error to allow the next step (dumping logs) to run
+        continue-on-error: true
+
+      - name: Dump gcloud logs if build failed
+        if: failure()
+        run: |
+          echo "--- Dumping gcloud logs for detailed error ---"
+          # The exact path from the error: /home/runner/.config/gcloud/logs/2025.10.30/06.03.23.662269.log
+          LOG_FILE="/home/runner/.config/gcloud/logs/2025.10.30/06.03.23.662269.log"
+          if [ -f "$LOG_FILE" ]; then
+            cat "$LOG_FILE"
+          else
+            echo "Gcloud log file not found at $LOG_FILE"
+            # List parent directories to debug if needed
+            ls -R /home/runner/.config/gcloud/logs/
+          fi
+          echo "--- End of gcloud logs ---"
+
