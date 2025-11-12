@@ -25,6 +25,14 @@ jobs:
         branch: [ oss-exit-gate ]
 
     steps:
+      - name: Get Secrets from GCP Secret Manager
+        id: 'secrets'
+        uses: 'google-github-actions/get-secretmanager-secrets@v0'
+        with:
+          secrets: |-
+            CDAP_GPG_PASSPHRASE:cdapio-github-builds/CDAP_GPG_PASSPHRASE
+            CDAP_GPG_PRIVATE_KEY:cdapio-github-builds/CDAP_GPG_PRIVATE_KEY
+
       - name: Recursively Checkout Repository
         uses: actions/checkout@v3
         with:
@@ -40,19 +48,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-${{ github.workflow }}
 
-      - name: Debug Working Directory and File Presence
+      - name: Set up GPG conf
         run: |
-          echo "--- Debugging File Paths ---"
-          echo "GITHUB_WORKSPACE: ${{ github.workspace }}"
-          echo "Contents of GITHUB_WORKSPACE:"
-          ls -lA ${{ github.workspace }}
-          echo ""
-          echo "Contents of twill/ directory:"
-          ls -lA ${{ github.workspace }}/twill/
-          echo ""
-          echo "Attempting to find cloudbuild.yaml within twill/:"
-          find ${{ github.workspace }}/twill/ -name cloudbuild.yaml
-          echo "--- Debugging Complete ---"
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+
+      - name: Import GPG key
+        run: |
+          echo "$GPG_PRIVATE_KEY" > private.key
+          gpg --import --batch private.key
+        env:
+          GPG_PRIVATE_KEY: ${{ steps.secrets.outputs.CDAP_GPG_PRIVATE_KEY }}
 
       - name: Submit Build to GCB
         id: gcb

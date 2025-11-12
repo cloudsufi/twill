@@ -102,8 +102,8 @@
             <url>artifactregistry://us-maven.pkg.dev/oss-exit-gate-prod/cloud-data-fusion--mavencentral</url>
         </snapshotRepository>
         <repository>
-            <id>artifact-registry</id>
-            <url>artifactregistry://us-maven.pkg.dev/oss-exit-gate-prod/cloud-data-fusion--mavencentral</url>
+            <id>sonatype-snapshots</id>
+            <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
         </repository>
     </distributionManagement>
 
@@ -241,6 +241,23 @@
                         </execution>
                     </executions>
                 </plugin>
+                <!-- GPG signature -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-gpg-plugin</artifactId>
+                    <version>1.5</version>
+                    <configuration>
+                        <passphrase>${gpg.passphrase}</passphrase>
+                        <useAgent>${gpg.useagent}</useAgent>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>sign</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
             </plugins>
         </pluginManagement>
         <plugins>
@@ -284,6 +301,14 @@
                         <include>**/*TestCase.java</include>
                     </includes>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-gpg-plugin</artifactId>
             </plugin>
         </plugins>
     </build>
