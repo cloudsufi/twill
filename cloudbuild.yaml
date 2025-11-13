@@ -10,8 +10,6 @@
 #  the License.
 
 steps:
-
-  # 3. Conditional Deploy Step: Handles both SNAPSHOT and RELEASE mvn deploy
   - name: 'gcr.io/cloud-builders/mvn:3.8-jdk-8'
     id: conditional-deploy
     entrypoint: 'bash'
@@ -19,8 +17,10 @@ steps:
       - '-c'
       - |
         set -e
+        DEPLOY_TYPE="${_DEPLOY_TYPE}"
+        GPG_PASSPHRAS="${_GPG_PASSPHRAS}"
 
-        if [[ "${_DEPLOY_TYPE}" == "SNAPSHOT" ]]; then
+        if [[ "${DEPLOY_TYPE}" == "SNAPSHOT" ]]; then
           OSSRH_USERNAME="${_SONATYPE_USERNAME}"
           OSSRH_PASSWORD="${_SONATYPE_PASSWORD}"
 
@@ -31,25 +31,29 @@ steps:
             <servers>
               <server>
                 <id>sonatype.release</id> <!-- Matches <publishingServerId> in pom.xml -->
-                <username>$${OSSRH_USERNAME}</username>
-                <password>$${OSSRH_PASSWORD}</password>
+                <username>${OSSRH_USERNAME}</username>
+                <password>${OSSRH_PASSWORD}</password>
               </server>
             </servers>
           </settings>
           EOF
-          # Run mvn deploy for SNAPSHOT. The central-publishing-maven-plugin will use settings.xml.
-          mvn deploy -B -V \
+
+          # Run mvn deploy for SNAPSHOT. Use maven-gpg-plugin version 3.2.4+
+          mvn deploy -B -V -X \
             -DskipTests \
-            -Dgpg.passphrase="${_GPG_PASSPHRAS}" \
+            -Dgpg.passphrase="${GPG_PASSPHRAS}" \
             -Dremoteresources.skip=true
-        else
+          echo "SNAPSHOT deployment to Sonatype complete."
+        elif [[ "${DEPLOY_TYPE}" == "RELEASE" ]]; then
           # Run the original mvn deploy command for RELEASE to Artifact Registry
-          mvn deploy -B -V \
+          mvn deploy -B -V -X \
             -DskipTests \
             -P hadoop-2.6 \
             -Drat.skip=true \
             -Dremoteresources.skip=true \
-            -Dmaven.wagon.http.google.EffectiveVersion=1.0.1
+            -Dmaven.wagon.http.google.EffectiveVersion=1.0.1 \
+            -Dgpg.passphrase="${GPG_PASSPHRAS}"
+          echo "RELEASE deployment to Artifact Registry complete."
         fi
 
   # 4. Create Exit Gate Manifest (ONLY for RELEASE)
@@ -95,9 +99,3 @@ steps:
 
 options:
   machineType: 'E2_HIGHCPU_32'
-
-substitutions:
-  _DEPLOY_TYPE: ''
-  _GPG_PASSPHRAS: ''
-  _SONATYPE_USERNAME: ''
-  _SONATYPE_PASSWORD: ''
