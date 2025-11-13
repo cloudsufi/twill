@@ -21,6 +21,22 @@ steps:
         set -e
 
         if [[ "${_DEPLOY_TYPE}" == "SNAPSHOT" ]]; then
+          OSSRH_USERNAME="${_SONATYPE_USERNAME}"
+          OSSRH_PASSWORD="${_SONATYPE_PASSWORD}"
+
+          # Create settings.xml for Sonatype Central plugin
+          mkdir -p ~/.m2
+          cat <<EOF > ~/.m2/settings.xml
+          <settings>
+            <servers>
+              <server>
+                <id>sonatype.release</id> <!-- Matches <publishingServerId> in pom.xml -->
+                <username>$${OSSRH_USERNAME}</username>
+                <password>$${OSSRH_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
           # Run mvn deploy for SNAPSHOT. The central-publishing-maven-plugin will use settings.xml.
           mvn deploy -B -V \
             -DskipTests \
@@ -81,7 +97,6 @@ options:
   machineType: 'E2_HIGHCPU_32'
 
 substitutions:
-  _MVN_VERSION: ''
   _DEPLOY_TYPE: ''
   _GPG_PASSPHRAS: ''
   _SONATYPE_USERNAME: ''

@@ -78,4 +78,4 @@ jobs:
           gcloud builds submit . \
             --config=cloudbuild.yaml \
             --project='cdapio-github-builds' \
-            --substitutions="_MVN_VERSION=${{ steps.get_version.outputs.version }},_DEPLOY_TYPE=${{ steps.get_version.outputs.deploy_type }},_GPG_PASSPHRAS=${{ steps.secrets.outputs.CDAP_GPG_PASSPHRASE }},_SONATYPE_USERNAME=${{ steps.secrets.outputs.CDAP_OSSRH_USERNAME }},_SONATYPE_PASSWORD=${{ steps.secrets.outputs.CDAP_OSSRH_PASSWORD }}"
+            --substitutions="_DEPLOY_TYPE=${{ steps.get_version.outputs.deploy_type }},_GPG_PASSPHRAS=${{ steps.secrets.outputs.CDAP_GPG_PASSPHRASE }},_SONATYPE_USERNAME=${{ steps.secrets.outputs.CDAP_OSSRH_USERNAME }},_SONATYPE_PASSWORD=${{ steps.secrets.outputs.CDAP_OSSRH_PASSWORD }}"
