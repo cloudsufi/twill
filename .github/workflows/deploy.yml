@@ -77,7 +77,7 @@ jobs:
           echo "Deploying SNAPSHOT version"
           mvn deploy -B -V \
             -DskipTests \
-            -Dgpg.passphrase=${{ steps.secrets.outputs.CDAP_GPG_PASSPHRAS }} \
+            -Dgpg.passphrase=${{ steps.secrets.outputs.CDAP_GPG_PASSPHRASE }} \
             -Dremoteresources.skip=true
         env:
           CDAP_OSSRH_USERNAME: ${{ steps.secrets.outputs.CDAP_OSSRH_USERNAME }}
