@@ -23,9 +23,9 @@ steps:
         echo "GPG Private Key fetched."
 
         # Fetch Sonatype Credentials and GPG Passphrase and export to BUILDER_OUTPUT/env
-        echo "CDAP_OSSRH_USERNAME=$(gcloud secrets versions access latest --secret=CDAP_OSSRH_USERNAME)" >> "$BUILDER_OUTPUT/env"
-        echo "CDAP_OSSRH_PASSWORD=$(gcloud secrets versions access latest --secret=CDAP_OSSRH_PASSWORD)" >> "$BUILDER_OUTPUT/env"
-        echo "CDAP_GPG_PASSPHRAS=$(gcloud secrets versions access latest --secret=CDAP_GPG_PASSPHRAS)" >> "$BUILDER_OUTPUT/env"
+        echo "CDAP_OSSRH_USERNAME=$(gcloud secrets versions access latest --secret=CDAP_OSSRH_USERNAME)" >> "$$BUILDER_OUTPUT/env"
+        echo "CDAP_OSSRH_PASSWORD=$(gcloud secrets versions access latest --secret=CDAP_OSSRH_PASSWORD)" >> "$$BUILDER_OUTPUT/env"
+        echo "CDAP_GPG_PASSPHRAS=$(gcloud secrets versions access latest --secret=CDAP_GPG_PASSPHRAS)" >> "$$BUILDER_OUTPUT/env"
         echo "All secrets fetched and exported."
 
   # 1. Setup GPG Environment
@@ -51,12 +51,12 @@ steps:
       - '-c'
       - |
         MVN_VERSION="${_MVN_VERSION}"
-        if [[ "${MVN_VERSION}" == *-SNAPSHOT ]]; then
-          echo "IS_SNAPSHOT=true" >> "$BUILDER_OUTPUT/env"
-          echo "Detected SNAPSHOT version: ${MVN_VERSION}"
+        if [[ "$${MVN_VERSION}" == *-SNAPSHOT ]]; then
+          echo "IS_SNAPSHOT=true" >> "$$BUILDER_OUTPUT/env"
+          echo "Detected SNAPSHOT version: $${MVN_VERSION}"
         else
-          echo "IS_SNAPSHOT=false" >> "$BUILDER_OUTPUT/env"
-          echo "Detected RELEASE version: ${MVN_VERSION}"
+          echo "IS_SNAPSHOT=false" >> "$$BUILDER_OUTPUT/env"
+          echo "Detected RELEASE version: $${MVN_VERSION}"
         fi
     waitFor: ['setup-gpg']
 
@@ -68,14 +68,14 @@ steps:
       - '-c'
       - |
         set -e
-        IS_SNAPSHOT="$(steps.determine-deploy.env.IS_SNAPSHOT)"
-        GPG_PASSPHRAS="$(steps.fetch-all-secrets.env.CDAP_GPG_PASSPHRASE)"
+        IS_SNAPSHOT="$$(steps.determine-deploy.env.IS_SNAPSHOT)"
+        GPG_PASSPHRAS="$$(steps.fetch-all-secrets.env.CDAP_GPG_PASSPHRASE)"
 
-        if [[ "${IS_SNAPSHOT}" == "true" ]]; then
+        if [[ "$${IS_SNAPSHOT}" == "true" ]]; then
           # Run mvn deploy for SNAPSHOT. The central-publishing-maven-plugin will use settings.xml.
           mvn deploy -B -V \
             -DskipTests \
-            -Dgpg.passphrase="${GPG_PASSPHRAS}" \
+            -Dgpg.passphrase="$${GPG_PASSPHRAS}" \
             -Dremoteresources.skip=true
           echo "SNAPSHOT deployment to Sonatype complete."
         else
@@ -98,7 +98,7 @@ steps:
     args:
       - '-c'
       - |
-        if [[ "$(steps.determine-deploy.env.IS_SNAPSHOT)" == "false" ]]; then
+        if [[ "$$(steps.determine-deploy.env.IS_SNAPSHOT)" == "false" ]]; then
           set -e
           MANIFEST_FILE="/workspace/exit_gate_manifest.textproto"
           echo '# -*- protobuffer -*-' > "$${MANIFEST_FILE}"
@@ -119,11 +119,11 @@ steps:
     args:
       - '-c'
       - |
-        if [[ "$(steps.determine-deploy.env.IS_SNAPSHOT)" == "false" ]]; then
+        if [[ "$$(steps.determine-deploy.env.IS_SNAPSHOT)" == "false" ]]; then
           set -e
           GCS_MANIFEST_DIR="gs://oss-exit-gate-prod-projects-bucket/cloud-data-fusion/mavencentral/manifests/"
           MANIFEST_FILE="/workspace/exit_gate_manifest.textproto"
-          MANIFEST_FILENAME="release_$(date -u +%Y%m%d%H%M%S).textproto"
+          MANIFEST_FILENAME="release_$$(date -u +%Y%m%d%H%M%S).textproto"
           echo "Uploading manifest to $${GCS_MANIFEST_DIR}$${MANIFEST_FILENAME}"
           gsutil cp "$${MANIFEST_FILE}" "$${GCS_MANIFEST_DIR}$${MANIFEST_FILENAME}"
           echo "Manifest uploaded successfully. OSS Exit Gate process should now be triggered."
