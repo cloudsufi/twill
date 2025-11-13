@@ -69,6 +69,11 @@ jobs:
           MVN_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "version=$MVN_VERSION" >> "$GITHUB_OUTPUT"
           echo "Detected Maven version: $MVN_VERSION"
+          if [[ "$MVN_VERSION" == *-SNAPSHOT ]]; then
+            echo "deploy_type=SNAPSHOT" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy_type=RELEASE" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Submit Build to GCB
         id: gcb
