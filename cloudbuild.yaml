@@ -79,3 +79,10 @@ steps:
 
 options:
   machineType: 'E2_HIGHCPU_32'
+
+substitutions:
+  _MVN_VERSION: ''
+  _DEPLOY_TYPE: ''
+  _GPG_PASSPHRAS: ''
+  _SONATYPE_USERNAME: ''
+  _SONATYPE_PASSWORD: ''
