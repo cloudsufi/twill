@@ -69,18 +69,12 @@ jobs:
           MVN_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "version=$MVN_VERSION" >> "$GITHUB_OUTPUT"
           echo "Detected Maven version: $MVN_VERSION"
-          if [[ "$MVN_VERSION" == *-SNAPSHOT ]]; then
-            echo "deploy_type=SNAPSHOT" >> "$GITHUB_OUTPUT"
-          else
-            echo "deploy_type=RELEASE" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Submit Build to GCB
         id: gcb
         working-directory: twill
         run: |
-          echo "Submitting build for version ${{ steps.get_version.outputs.version }} (Deploy Type: ${{ steps.get_version.outputs.deploy_type }}) to Cloud Build..."
           gcloud builds submit . \
             --config=cloudbuild.yaml \
             --project='cdapio-github-builds' \
-            --substitutions="_DEPLOY_TYPE=${{ steps.get_version.outputs.deploy_type }},_GPG_PASSPHRAS=${{ steps.secrets.outputs.CDAP_GPG_PASSPHRASE }},_SONATYPE_USERNAME=${{ steps.secrets.outputs.CDAP_OSSRH_USERNAME }},_SONATYPE_PASSWORD=${{ steps.secrets.outputs.CDAP_OSSRH_PASSWORD }}"
+            --substitutions=_MVN_VERSION="1.5.0-SNAPSHOT"   

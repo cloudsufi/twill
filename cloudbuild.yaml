@@ -10,6 +10,57 @@
 #  the License.
 
 steps:
+  # 0. Fetch All Necessary Secrets
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: fetch-all-secrets
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        # Fetch GPG Private Key to a file in /workspace
+        gcloud secrets versions access latest --secret=CDAP_GPG_PRIVATE_KEY --format='get(payload.data)' | tr '_-' '/+' | base64 -d > /workspace/gpg_private.key
+        echo "GPG Private Key fetched."
+
+        # Fetch Sonatype Credentials and GPG Passphrase and export to BUILDER_OUTPUT/env
+        echo "CDAP_OSSRH_USERNAME=$(gcloud secrets versions access latest --secret=CDAP_OSSRH_USERNAME)" >> "$$BUILDER_OUTPUT/env"
+        echo "CDAP_OSSRH_PASSWORD=$(gcloud secrets versions access latest --secret=CDAP_OSSRH_PASSWORD)" >> "$$BUILDER_OUTPUT/env"
+        echo "CDAP_GPG_PASSPHRAS=$(gcloud secrets versions access latest --secret=CDAP_GPG_PASSPHRASE)" >> "$$BUILDER_OUTPUT/env"
+        echo "All secrets fetched and exported."
+
+  # 1. Setup GPG Environment
+  - name: 'gcr.io/cloud-builders/mvn:3.8-jdk-8'
+    id: setup-gpg
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        mkdir -p ~/.gnupg
+        echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+        echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+        gpg --import --batch /workspace/gpg_private.key
+        echo "GPG key imported."
+    waitFor: ['fetch-all-secrets']
+
+  # 2. Determine if it's a SNAPSHOT or RELEASE build
+  - name: 'ubuntu'
+    id: determine-deploy
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        MVN_VERSION="${_MVN_VERSION}"
+        if [[ "$${MVN_VERSION}" == *-SNAPSHOT ]]; then
+          echo "IS_SNAPSHOT=true" >> "$$BUILDER_OUTPUT/env"
+          echo "Detected SNAPSHOT version: $${MVN_VERSION}"
+        else
+          echo "IS_SNAPSHOT=false" >> "$$BUILDER_OUTPUT/env"
+          echo "Detected RELEASE version: $${MVN_VERSION}"
+        fi
+    waitFor: ['setup-gpg']
+
+  # 3. Conditional Deploy Step: Handles both SNAPSHOT and RELEASE mvn deploy
   - name: 'gcr.io/cloud-builders/mvn:3.8-jdk-8'
     id: conditional-deploy
     entrypoint: 'bash'
@@ -17,44 +68,25 @@ steps:
       - '-c'
       - |
         set -e
-        DEPLOY_TYPE="${_DEPLOY_TYPE}"
-        GPG_PASSPHRAS="${_GPG_PASSPHRAS}"
+        IS_SNAPSHOT="$$_DETERMINE_DEPLOY_IS_SNAPSHOT"
+        GPG_PASSPHRAS="$$_FETCH_ALL_SECRETS_CDAP_GPG_PASSPHRASE"
 
-        if [[ "$${DEPLOY_TYPE}" == "SNAPSHOT" ]]; then
-          OSSRH_USERNAME="${_SONATYPE_USERNAME}"
-          OSSRH_PASSWORD="${_SONATYPE_PASSWORD}"
-
-          # Create settings.xml for Sonatype Central plugin
-          mkdir -p ~/.m2
-          cat <<EOF > ~/.m2/settings.xml
-          <settings>
-            <servers>
-              <server>
-                <id>sonatype.release</id> <!-- Matches <publishingServerId> in pom.xml -->
-                <username>$${OSSRH_USERNAME}</username>
-                <password>$${OSSRH_PASSWORD}</password>
-              </server>
-            </servers>
-          </settings>
-          EOF
-
-          # Run mvn deploy for SNAPSHOT. Use maven-gpg-plugin version 3.2.4+
-          mvn deploy -B -V -X \
+        if [[ "$${IS_SNAPSHOT}" == "true" ]]; then
+          # Run mvn deploy for SNAPSHOT. The central-publishing-maven-plugin will use settings.xml.
+          mvn deploy -B -V \
             -DskipTests \
             -Dgpg.passphrase="$${GPG_PASSPHRAS}" \
             -Dremoteresources.skip=true
-          echo "SNAPSHOT deployment to Sonatype complete."
-        elif [[ "$${DEPLOY_TYPE}" == "RELEASE" ]]; then
+        else
           # Run the original mvn deploy command for RELEASE to Artifact Registry
-          mvn deploy -B -V -X \
+          mvn deploy -B -V \
             -DskipTests \
             -P hadoop-2.6 \
             -Drat.skip=true \
             -Dremoteresources.skip=true \
-            -Dmaven.wagon.http.google.EffectiveVersion=1.0.1 \
-            -Dgpg.passphrase="$${GPG_PASSPHRAS}"
-          echo "RELEASE deployment to Artifact Registry complete."
+            -Dmaven.wagon.http.google.EffectiveVersion=1.0.1
         fi
+    waitFor: ['determine-deploy']
 
   # 4. Create Exit Gate Manifest (ONLY for RELEASE)
   - name: 'bash'
@@ -63,7 +95,7 @@ steps:
     args:
       - '-c'
       - |
-        if [[ "${_DEPLOY_TYPE}" == "RELEASE"]]; then
+        if [[ "$$_DETERMINE_DEPLOY_IS_SNAPSHOT" == "false" ]]; then
           set -e
           MANIFEST_FILE="/workspace/exit_gate_manifest.textproto"
           echo '# -*- protobuffer -*-' > "$${MANIFEST_FILE}"
@@ -84,7 +116,7 @@ steps:
     args:
       - '-c'
       - |
-        if [[ "${_DEPLOY_TYPE}" == "RELEASE" ]]; then
+        if [[ "$$(steps.determine-deploy.env.IS_SNAPSHOT)" == "false" ]]; then
           set -e
           GCS_MANIFEST_DIR="gs://oss-exit-gate-prod-projects-bucket/cloud-data-fusion/mavencentral/manifests/"
           MANIFEST_FILE="/workspace/exit_gate_manifest.textproto"
