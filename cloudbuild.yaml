@@ -68,21 +68,12 @@ steps:
       - '-c'
       - |
         set -e
-        IS_SNAPSHOT="$$_DETERMINE_DEPLOY_IS_SNAPSHOT"
         GPG_PASSPHRAS="$$_FETCH_ALL_SECRETS_CDAP_GPG_PASSPHRASE"
 
-        if [[ "$${IS_SNAPSHOT}" == "true" ]]; then
-          # Run mvn deploy for SNAPSHOT. The central-publishing-maven-plugin will use settings.xml.
-          mvn deploy -B -V \
-            -DskipTests \
-            -Dgpg.passphrase="$${GPG_PASSPHRAS}" \
-            -Dremoteresources.skip=true
-        else
-          # Run the original mvn deploy command for RELEASE to Artifact Registry
           mvn deploy -B -V \
             -DskipTests \
             -P hadoop-2.6 \
-            -Drat.skip=true \
+            -Dgpg.passphrase="$${GPG_PASSPHRAS}" \
             -Dremoteresources.skip=true \
             -Dmaven.wagon.http.google.EffectiveVersion=1.0.1
         fi
