@@ -1,67 +1,56 @@
-# Copyright © 2025 Cask Data, Inc.
-#  Licensed under the Apache License, Version 2.0 (the "License"); you may not
-#  use this file except in compliance with the License. You may obtain a copy of
-#  the License at
-#  http://www.apache.org/licenses/LICENSE-2.0
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-#  License for the specific language governing permissions and limitations under
-#  the License.
-
 steps:
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: fetch-gpg-key
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        # Fetch GPG Private Key to a file in /workspace. This method is good for multi-line/binary secrets.
+        gcloud secrets versions access latest --secret=CDAP_GPG_PRIVATE_KEY --format='get(payload.data)' | tr '_-' '/+' | base64 -d > /workspace/gpg_private.key
+        echo "GPG Private Key fetched."
+
   # 1. Setup GPG Environment
   - name: 'gcr.io/cloud-builders/mvn:3.8-jdk-8'
     id: setup-gpg
     entrypoint: 'bash'
-    secretEnv:
-      - 'GPG_PRIVATE_KEY'
     args:
       - '-c'
       - |
         set -e
         mkdir -p ~/.gnupg
-        # Fix unsafe permissions warning by setting restrictive permissions
-        chmod 700 ~/.gnupg
         echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
         echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
-        # Correctly access the environment variable using $$
-        echo "$${GPG_PRIVATE_KEY}" > private.key
-        # Restrict permissions on the private key file
-        chmod 400 private.key
-        gpg --import --batch private.key
+        gpg --import --batch /workspace/gpg_private.key
         echo "GPG key imported."
+    waitFor: ['fetch-gpg-key']
 
-  # 2. Setup Maven settings.xml for Sonatype authentication
-  - name: 'gcr.io/cloud-builders/mvn:3.8-jdk-8'
+  # 2. Setup Maven settings.xml to use Secret Manager variables for Sonatype
+  - name: 'bash'
     id: setup-maven-settings
     entrypoint: 'bash'
-    secretEnv:
-      - 'CDAP_OSSRH_USERNAME'
-      - 'CDAP_OSSRH_PASSWORD'
     args:
       - '-c'
       - |
         set -e
-        mkdir -p ~/.m2
-        # Create settings.xml to use environment variables for Sonatype credentials
-        cat > ~/.m2/settings.xml << EOF
+        # Create .m2 directory within /workspace to ensure persistence across steps.
+        mkdir -p /workspace/.m2
+        cat <<EOF > /workspace/.m2/settings.xml
         <settings>
-        <servers>
-        <server>
-        <id>sonatype.release</id>
-        <username>$${CDAP_OSSRH_USERNAME}</username>
-        <password>$${CDAP_OSSRH_PASSWORD}</password>
-        </server>
-        <server>
-        <id>sonatype.snapshots</id>
-        <username>$${CDAP_OSSRH_USERNAME}</username>
-        <password>$${CDAP_OSSRH_PASSWORD}</password>
-        </server>
-        </servers>
+          <servers>
+            <server>
+              <id>sonatype.release</id>
+              <username>\$${env.CDAP_OSSRH_USERNAME}</username>
+              <password>\$${env.CDAP_OSSRH_PASSWORD}</password>
+            </server>
+          </servers>
         </settings>
         EOF
-        echo "Maven settings.xml created with Sonatype credentials."
+    # Inject secrets so they can be used in the settings.xml template
+    secretEnv:
+      - 'CDAP_OSSRH_USERNAME'
+      - 'CDAP_OSSRH_PASSWORD'
+      - 'CDAP_GPG_PASSPHRASE'
     waitFor: ['setup-gpg']
 
   # 3. Determine if it's a SNAPSHOT or RELEASE build
@@ -71,6 +60,7 @@ steps:
     args:
       - '-c'
       - |
+        # Assuming _MVN_VERSION is passed as a build argument
         MVN_VERSION="${_MVN_VERSION}"
         if [[ "$${MVN_VERSION}" == *-SNAPSHOT ]]; then
           echo "IS_SNAPSHOT=true" >> "$$BUILDER_OUTPUT/env"
@@ -79,28 +69,32 @@ steps:
           echo "IS_SNAPSHOT=false" >> "$$BUILDER_OUTPUT/env"
           echo "Detected RELEASE version: $${MVN_VERSION}"
         fi
-    waitFor: ['setup-maven-settings']
 
-# 4. Conditional Deploy Step: Handles both SNAPSHOT and RELEASE mvn deploy
+  # 4. Conditional Maven Deploy (using mvn deploy)
   - name: 'gcr.io/cloud-builders/mvn:3.8-jdk-8'
     id: conditional-deploy
     entrypoint: 'bash'
-    # Inject only the passphrase here, as OSSRH creds are used via settings.xml
+    # Inject secrets from availableSecrets as environment variables for this step
     secretEnv:
+      - 'CDAP_OSSRH_USERNAME'
+      - 'CDAP_OSSRH_PASSWORD'
       - 'CDAP_GPG_PASSPHRASE'
     args:
       - '-c'
       - |
-        set -e
-        GPG_PASSPHRAS="$$CDAP_GPG_PASSPHRASE"
-          mvn deploy -B -V \
-            -DskipTests \
-            -P hadoop-2.6 \
-            -Drat.skip=true \
-            -Dgpg.passphrase="$${GPG_PASSPHRAS}" \
-            -Dremoteresources.skip=true \
-            -Dmaven.wagon.http.google.EffectiveVersion=1.0.1
+        MVN_COMMAND="mvn deploy -B -V \
+          -s /workspace/.m2/settings.xml \
+          -P hadoop-2.6 \
+          -DskipTests \
+          -Drat.skip=true \
+          -Dgpg.passphrase="$${CDAP_GPG_PASSPHRASE}" \
+          -Dremoteresources.skip=true \
+          -Dmaven.wagon.http.google.EffectiveVersion=1.0.1"
+        
+        if [[ "$$_DETERMINE_DEPLOY_IS_SNAPSHOT" == "false" ]]; then
+        MVN_COMMAND+=" -P release-to-artifact-registry"
         fi
+        $${MVN_COMMAND}
     waitFor: ['determine-deploy']
 
   # 5. Create Exit Gate Manifest (ONLY for RELEASE)
@@ -110,6 +104,7 @@ steps:
     args:
       - '-c'
       - |
+        # Correctly access the output variable from determine-deploy using $$_STEP_ID_KEY
         if [[ "$$_DETERMINE_DEPLOY_IS_SNAPSHOT" == "false" ]]; then
           set -e
           MANIFEST_FILE="/workspace/exit_gate_manifest.textproto"
@@ -131,7 +126,8 @@ steps:
     args:
       - '-c'
       - |
-        if [[ "$$(steps.determine-deploy.env.IS_SNAPSHOT)" == "false" ]]; then
+        # Correctly access the output variable from determine-deploy using $$_STEP_ID_KEY
+        if [[ "$$_DETERMINE_DEPLOY_IS_SNAPSHOT" == "false" ]]; then
           set -e
           GCS_MANIFEST_DIR="gs://oss-exit-gate-prod-projects-bucket/cloud-data-fusion/mavencentral/manifests/"
           MANIFEST_FILE="/workspace/exit_gate_manifest.textproto"
@@ -145,16 +141,14 @@ steps:
     waitFor: ['create-exit-gate-manifest']
 
 options:
-    machineType: 'E2_HIGHCPU_32'
+  machineType: 'E2_HIGHCPU_32'
 
-  # Define secrets to be fetched from Secret Manager and injected as environment variables
+# Define secrets to be fetched from Secret Manager and injected as environment variables
 availableSecrets:
-    secretManager:
-      - versionName: projects/cdapio-github-builds/secrets/CDAP_OSSRH_USERNAME/versions/latest
-        env: 'CDAP_OSSRH_USERNAME'
-      - versionName: projects/cdapio-github-builds/secrets/CDAP_OSSRH_PASSWORD/versions/latest
-        env: 'CDAP_OSSRH_PASSWORD'
-      - versionName: projects/cdapio-github-builds/secrets/CDAP_GPG_PASSPHRASE/versions/latest
-        env: 'CDAP_GPG_PASSPHRASE'
-      - versionName:  projects/cdapio-github-builds/secrets/CDAP_GPG_PRIVATE_KEY/versions/latest
-        env: 'GPG_PRIVATE_KEY'
+  secretManager:
+    - versionName: projects/cdapio-github-builds/secrets/CDAP_OSSRH_USERNAME/versions/latest
+      env: 'CDAP_OSSRH_USERNAME'
+    - versionName: projects/cdapio-github-builds/secrets/CDAP_OSSRH_PASSWORD/versions/latest
+      env: 'CDAP_OSSRH_PASSWORD'
+    - versionName: projects/cdapio-github-builds/secrets/CDAP_GPG_PASSPHRASE/versions/latest
+      env: 'CDAP_GPG_PASSPHRASE'
