@@ -50,6 +50,16 @@ public class LocalLocationTest extends LocationTestBase {
     return UserGroupInformation.getCurrentUser();
   }
 
+  @Override
+  protected boolean supportsPosixPermissions() {
+    return !isWindows();
+  }
+
+  @Override
+  protected boolean supportsPosixGroups() {
+    return !isWindows();
+  }
+
   @Test
   public void testLastModified() throws IOException, InterruptedException {
     LocationFactory lf = new LocalLocationFactory(TEMP_FOLDER.newFolder());

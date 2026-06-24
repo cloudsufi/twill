@@ -23,7 +23,6 @@ import com.google.common.collect.ImmutableList;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.hdfs.DFSUtil;
 import org.apache.hadoop.hdfs.HAUtil;
 import org.apache.hadoop.io.DataInputByteBuffer;
 import org.apache.hadoop.io.DataOutputBuffer;
@@ -75,30 +74,37 @@ public class YarnUtils {
     HADOOP_26
   }
 
-  private static boolean hasDFSUtilClient = false; // use this to judge if the hadoop version is above 2.8
-
-  private static boolean hasHAUtilsClient = false;
-
   private static Method getHaNnRpcAddressesMethod;
 
   private static Method cloneDelegationTokenForLogicalUriMethod;
 
   static {
+    getHaNnRpcAddressesMethod = findMethod("org.apache.hadoop.hdfs.DFSUtilClient",
+                                           "getHaNnRpcAddresses", Configuration.class);
+    if (getHaNnRpcAddressesMethod == null) {
+      getHaNnRpcAddressesMethod = findMethod("org.apache.hadoop.hdfs.DFSUtil",
+                                             "getHaNnRpcAddresses", Configuration.class);
+    }
+
+    cloneDelegationTokenForLogicalUriMethod = findMethod("org.apache.hadoop.hdfs.HAUtilClient",
+                                                         "cloneDelegationTokenForLogicalUri",
+                                                         UserGroupInformation.class, URI.class, Collection.class);
+    if (cloneDelegationTokenForLogicalUriMethod == null) {
+      cloneDelegationTokenForLogicalUriMethod = findMethod("org.apache.hadoop.hdfs.HAUtil",
+                                                           "cloneDelegationTokenForLogicalUri",
+                                                           UserGroupInformation.class, URI.class, Collection.class);
+    }
+  }
+
+  private static Method findMethod(String className, String methodName, Class<?>... parameterTypes) {
     try {
-      Class dfsUtilsClientClazz = Class.forName("org.apache.hadoop.hdfs.DFSUtilClient");
-      getHaNnRpcAddressesMethod = dfsUtilsClientClazz.getMethod("getHaNnRpcAddresses",
-          Configuration.class);
-      hasDFSUtilClient = true;
-      Class haUtilClientClazz = Class.forName("org.apache.hadoop.hdfs.HAUtilClient");
-      cloneDelegationTokenForLogicalUriMethod = haUtilClientClazz.getMethod(
-          "cloneDelegationTokenForLogicalUri", UserGroupInformation.class,
-          URI.class, Collection.class);
-      hasHAUtilsClient = true;
+      return Class.forName(className).getMethod(methodName, parameterTypes);
     } catch (ClassNotFoundException e) {
       LOG.debug("No such class", e);
     } catch (NoSuchMethodException e) {
       LOG.debug("No such method", e);
     }
+    return null;
   }
 
   private static final AtomicReference<HadoopVersions> HADOOP_VERSION = new AtomicReference<>();
@@ -210,11 +216,7 @@ public class YarnUtils {
    */
   private static void cloneDelegationTokenForLogicalUri(UserGroupInformation ugi, URI haUri,
                                                         Collection<InetSocketAddress> nnAddrs) {
-    if (hasHAUtilsClient) {
-      invokeStaticMethodWithExceptionHandled(cloneDelegationTokenForLogicalUriMethod, ugi, haUri, nnAddrs);
-    } else {
-      HAUtil.cloneDelegationTokenForLogicalUri(ugi, haUri, nnAddrs);
-    }
+    invokeStaticMethodWithExceptionHandled(cloneDelegationTokenForLogicalUriMethod, ugi, haUri, nnAddrs);
   }
 
 
@@ -224,11 +226,6 @@ public class YarnUtils {
    * @return
    */
   private static Map<String, Map<String, InetSocketAddress>> getHaNnRpcAddresses(Configuration config) {
-    return hasDFSUtilClient ? getHaNnRpcAddressesUseDFSUtilClient(config) :
-        DFSUtil.getHaNnRpcAddresses(config);
-  }
-
-  private static Map<String, Map<String, InetSocketAddress>> getHaNnRpcAddressesUseDFSUtilClient(Configuration config) {
     return (Map) invokeStaticMethodWithExceptionHandled(getHaNnRpcAddressesMethod, config);
   }
 
