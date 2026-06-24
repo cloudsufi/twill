@@ -24,6 +24,7 @@ import com.google.common.io.CharStreams;
 import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -203,7 +204,8 @@ public abstract class LocationTestBase {
     });
 
     location.createNew();
-    Assert.assertEquals(testUGI.getUserName(), location.getOwner());
+    Assume.assumeTrue(supportsPosixGroups());
+    assertUserNameEquals(testUGI.getUserName(), location.getOwner());
 
     String group = testUGI.getGroupNames()[0];
 
@@ -213,6 +215,7 @@ public abstract class LocationTestBase {
 
   @Test
   public void testPermissions() throws IOException, InterruptedException {
+    Assume.assumeTrue(supportsPosixPermissions());
     createTestUGI().doAs(new PrivilegedExceptionAction<Void>() {
       @Override
       public Void run() throws Exception {
@@ -293,6 +296,7 @@ public abstract class LocationTestBase {
 
   @Test
   public void testDirPermissions() throws IOException, InterruptedException {
+    Assume.assumeTrue(supportsPosixPermissions());
     createTestUGI().doAs(new PrivilegedExceptionAction<Void>() {
       @Override
       public Void run() throws Exception {
@@ -383,5 +387,24 @@ public abstract class LocationTestBase {
   protected UserGroupInformation createTestUGI() throws IOException {
     String userName = System.getProperty("user.name").equals("tester") ? "twiller" : "tester";
     return UserGroupInformation.createUserForTesting(userName, new String[] { "testgroup" });
+  }
+
+  protected boolean supportsPosixPermissions() {
+    return true;
+  }
+
+  protected boolean supportsPosixGroups() {
+    return true;
+  }
+
+  protected static boolean isWindows() {
+    return System.getProperty("os.name").toLowerCase().contains("windows");
+  }
+
+  private void assertUserNameEquals(String expected, String actual) {
+    if (isWindows() && actual.endsWith("\\" + expected)) {
+      return;
+    }
+    Assert.assertEquals(expected, actual);
   }
 }

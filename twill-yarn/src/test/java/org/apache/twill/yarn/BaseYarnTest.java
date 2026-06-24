@@ -87,6 +87,9 @@ public abstract class BaseYarnTest {
   public final void cleanupTest() {
     // Make sure all applications are stopped after a test case is executed, even it failed.
     TwillRunner twillRunner = TWILL_TESTER.getTwillRunner();
+    if (twillRunner == null) {
+      return;
+    }
     for (TwillRunner.LiveInfo liveInfo : twillRunner.lookupLive()) {
       for (TwillController controller : liveInfo.getControllers()) {
         try {

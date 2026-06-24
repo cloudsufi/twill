@@ -133,7 +133,8 @@ public class KafkaTest {
 
           // Start the server again.
           // Needs to create a new instance with the same config since guava service cannot be restarted
-          server = new EmbeddedKafkaServer(generateKafkaConfig(zkServer.getConnectionStr() + "/backoff", logDir));
+          server = new EmbeddedKafkaServer(generateKafkaConfig(zkServer.getConnectionStr() + "/backoff",
+                                                               TMP_FOLDER.newFolder()));
           server.startAsync().awaitRunning();
 
           // Wait a little while to make sure changes is reflected in broker service
@@ -290,7 +291,7 @@ public class KafkaTest {
 
     // Now shutdown and restart the server on different port
     server.stopAsync().awaitTerminated();
-    server = new EmbeddedKafkaServer(generateKafkaConfig(connectionStr, logDir));
+    server = new EmbeddedKafkaServer(generateKafkaConfig(connectionStr, TMP_FOLDER.newFolder()));
     server.startAsync().awaitRunning();
 
     // Wait a little while to make sure changes is reflected in broker service

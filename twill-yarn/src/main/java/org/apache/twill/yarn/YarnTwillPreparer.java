@@ -43,6 +43,7 @@ import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
+import org.apache.hadoop.yarn.api.ApplicationConstants;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.twill.api.ClassAcceptor;
 import org.apache.twill.api.Configs;
@@ -433,7 +434,8 @@ final class YarnTwillPreparer implements TwillPreparer {
                 "-Djava.io.tmpdir=tmp",
                 "-Dyarn.appId=$" + EnvKeys.YARN_APP_ID_STR,
                 "-Dtwill.app=$" + Constants.TWILL_APP_NAME,
-                "-cp", Constants.Files.LAUNCHER_JAR + ":$HADOOP_CONF_DIR",
+                "-cp", Constants.Files.LAUNCHER_JAR + ApplicationConstants.CLASS_PATH_SEPARATOR +
+                  "$HADOOP_CONF_DIR",
                 "-Xmx" + memory + "m",
                 jvmOptions.getAMExtraOptions(),
                 TwillLauncher.class.getName(),

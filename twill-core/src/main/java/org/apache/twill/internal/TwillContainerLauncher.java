@@ -51,6 +51,7 @@ import javax.annotation.Nullable;
 public final class TwillContainerLauncher {
 
   private static final Logger LOG = LoggerFactory.getLogger(TwillContainerLauncher.class);
+  private static final String CLASSPATH_SEPARATOR = System.getProperty("path.separator");
 
   private final RuntimeSpecification runtimeSpec;
   private final ContainerInfo containerInfo;
@@ -150,7 +151,7 @@ public final class TwillContainerLauncher {
     commandBuilder.add("-Djava.io.tmpdir=tmp",
                        "-Dyarn.container=$" + EnvKeys.YARN_CONTAINER_ID,
                        "-Dtwill.runnable=$" + Constants.TWILL_APP_NAME + ".$" + EnvKeys.TWILL_RUNNABLE_NAME,
-                       "-cp", Constants.Files.LAUNCHER_JAR + ":" + classPath,
+                       "-cp", Constants.Files.LAUNCHER_JAR + CLASSPATH_SEPARATOR + classPath,
                        "-Xmx" + maxHeapSizeMB + "m");
     String extraOptions = jvmOpts.getRunnableExtraOptions(runtimeSpec.getName());
     if (!extraOptions.isEmpty()) {

@@ -43,6 +43,7 @@ import org.apache.twill.filesystem.LocationFactory;
 import org.apache.twill.internal.yarn.VersionDetectYarnAppClientFactory;
 import org.apache.twill.internal.yarn.YarnAppClient;
 import org.apache.twill.internal.zookeeper.InMemoryZKServer;
+import org.junit.Assume;
 import org.junit.rules.ExternalResource;
 import org.junit.rules.TemporaryFolder;
 import org.slf4j.Logger;
@@ -75,6 +76,9 @@ import java.util.Map;
 public class TwillTester extends ExternalResource {
 
   private static final Logger LOG = LoggerFactory.getLogger(TwillTester.class);
+  private static final String TEST_JVM_OPTIONS = "-Djava.awt.headless=true";
+  private static final String JAVA_9_PLUS_TEST_JVM_OPTIONS = TEST_JVM_OPTIONS +
+    " --add-opens=java.base/java.lang=ALL-UNNAMED --add-exports=java.base/sun.nio.ch=ALL-UNNAMED";
 
   private final TemporaryFolder tmpFolder = new TemporaryFolder();
   private final Map<String, String> extraConfig;
@@ -107,6 +111,7 @@ public class TwillTester extends ExternalResource {
 
   @Override
   protected void before() throws Throwable {
+    Assume.assumeFalse(isWindowsWithoutHadoopHome());
     tmpFolder.create();
 
     // Starts Zookeeper
@@ -154,28 +159,36 @@ public class TwillTester extends ExternalResource {
   @Override
   protected void after() {
     // Stop all runnable applications
-    for (TwillRunner.LiveInfo info : twillRunner.lookupLive()) {
-      for (TwillController controller : info.getControllers()) {
-        try {
-          controller.terminate().get();
-        } catch (Exception e) {
-          LOG.warn("Exception raised when awaiting termination of {}", info.getApplicationName());
+    if (twillRunner != null) {
+      for (TwillRunner.LiveInfo info : twillRunner.lookupLive()) {
+        for (TwillController controller : info.getControllers()) {
+          try {
+            controller.terminate().get();
+          } catch (Exception e) {
+            LOG.warn("Exception raised when awaiting termination of {}", info.getApplicationName());
+          }
         }
       }
     }
 
     try {
-      twillRunner.stop();
+      if (twillRunner != null) {
+        twillRunner.stop();
+      }
     } catch (Exception e) {
       LOG.warn("Failed to stop TwillRunner", e);
     }
     try {
-      cluster.stop();
+      if (cluster != null) {
+        cluster.stop();
+      }
     } catch (Exception e) {
       LOG.warn("Failed to stop mini Yarn cluster", e);
     }
     try {
-      dfsCluster.shutdown();
+      if (dfsCluster != null) {
+        dfsCluster.shutdown();
+      }
     } catch (Exception e) {
       LOG.warn("Failed to stop mini dfs cluster", e);
     }
@@ -191,7 +204,7 @@ public class TwillTester extends ExternalResource {
     YarnTwillRunnerService runner = new YarnTwillRunnerService(config, zkServer.getConnectionStr() + "/twill",
                                                                createLocationFactory());
     // disable tests stealing focus
-    runner.setJVMOptions("-Djava.awt.headless=true");
+    runner.setJVMOptions(getTestJvmOptions());
     return runner;
   }
 
@@ -240,10 +253,26 @@ public class TwillTester extends ExternalResource {
   }
 
   private void stopQuietly(Service service) {
+    if (service == null) {
+      return;
+    }
     try {
       service.stopAsync().awaitTerminated();
     } catch (Exception e) {
       LOG.warn("Failed to stop service {}.", service, e);
     }
+  }
+
+  private boolean isWindowsWithoutHadoopHome() {
+    return System.getProperty("os.name").toLowerCase().contains("windows") &&
+      System.getProperty("hadoop.home.dir") == null && System.getenv("HADOOP_HOME") == null;
+  }
+
+  private String getTestJvmOptions() {
+    String javaSpecVersion = System.getProperty("java.specification.version");
+    if (javaSpecVersion.startsWith("1.")) {
+      return TEST_JVM_OPTIONS;
+    }
+    return JAVA_9_PLUS_TEST_JVM_OPTIONS;
   }
 }

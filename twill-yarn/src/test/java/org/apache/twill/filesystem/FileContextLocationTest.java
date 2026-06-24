@@ -25,6 +25,7 @@ import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.junit.AfterClass;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -40,6 +41,7 @@ public class FileContextLocationTest extends LocationTestBase {
 
   @BeforeClass
   public static void init() throws IOException {
+    Assume.assumeFalse(isWindowsWithoutHadoopHome());
     Configuration conf = new Configuration();
     conf.set(MiniDFSCluster.HDFS_MINIDFS_BASEDIR, tmpFolder.newFolder().getAbsolutePath());
     dfsCluster = new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
@@ -49,7 +51,9 @@ public class FileContextLocationTest extends LocationTestBase {
 
   @AfterClass
   public static void finish() {
-    dfsCluster.shutdown();
+    if (dfsCluster != null) {
+      dfsCluster.shutdown();
+    }
   }
 
   @Override
@@ -71,5 +75,9 @@ public class FileContextLocationTest extends LocationTestBase {
       }
     });
     Assert.assertEquals(testUGI, fileContext.getUgi());
+  }
+
+  private static boolean isWindowsWithoutHadoopHome() {
+    return isWindows() && System.getProperty("hadoop.home.dir") == null && System.getenv("HADOOP_HOME") == null;
   }
 }
