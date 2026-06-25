@@ -76,9 +76,6 @@ import java.util.Map;
 public class TwillTester extends ExternalResource {
 
   private static final Logger LOG = LoggerFactory.getLogger(TwillTester.class);
-  private static final String TEST_JVM_OPTIONS = "-Djava.awt.headless=true";
-  private static final String JAVA_9_PLUS_TEST_JVM_OPTIONS = TEST_JVM_OPTIONS +
-    " --add-opens=java.base/java.lang=ALL-UNNAMED --add-exports=java.base/sun.nio.ch=ALL-UNNAMED";
 
   private final TemporaryFolder tmpFolder = new TemporaryFolder();
   private final Map<String, String> extraConfig;
@@ -204,7 +201,7 @@ public class TwillTester extends ExternalResource {
     YarnTwillRunnerService runner = new YarnTwillRunnerService(config, zkServer.getConnectionStr() + "/twill",
                                                                createLocationFactory());
     // disable tests stealing focus
-    runner.setJVMOptions(getTestJvmOptions());
+    runner.setJVMOptions("-Djava.awt.headless=true");
     return runner;
   }
 
@@ -266,13 +263,5 @@ public class TwillTester extends ExternalResource {
   private boolean isWindowsWithoutHadoopHome() {
     return System.getProperty("os.name").toLowerCase().contains("windows") &&
       System.getProperty("hadoop.home.dir") == null && System.getenv("HADOOP_HOME") == null;
-  }
-
-  private String getTestJvmOptions() {
-    String javaSpecVersion = System.getProperty("java.specification.version");
-    if (javaSpecVersion.startsWith("1.")) {
-      return TEST_JVM_OPTIONS;
-    }
-    return JAVA_9_PLUS_TEST_JVM_OPTIONS;
   }
 }
